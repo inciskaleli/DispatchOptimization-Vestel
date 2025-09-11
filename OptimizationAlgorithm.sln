@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebApi", "WebApi\WebApi.csproj", "{C43D20F5-C864-4BC9-875C-4F05E5A103C1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Algorithm", "Algorithm\Algorithm.csproj", "{58A68AF7-DE2A-4E71-85D4-1A40824B4080}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C43D20F5-C864-4BC9-875C-4F05E5A103C1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C43D20F5-C864-4BC9-875C-4F05E5A103C1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C43D20F5-C864-4BC9-875C-4F05E5A103C1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C43D20F5-C864-4BC9-875C-4F05E5A103C1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{58A68AF7-DE2A-4E71-85D4-1A40824B4080}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{58A68AF7-DE2A-4E71-85D4-1A40824B4080}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{58A68AF7-DE2A-4E71-85D4-1A40824B4080}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{58A68AF7-DE2A-4E71-85D4-1A40824B4080}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

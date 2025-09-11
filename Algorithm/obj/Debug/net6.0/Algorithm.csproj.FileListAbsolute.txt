@@ -1,0 +1,12 @@
+C:\Users\inci\Desktop\OPTIPRO\ResourceDispatchingRoutingScheduling\new one\Algorithm\bin\Debug\net6.0\Algorithm.deps.json
+C:\Users\inci\Desktop\OPTIPRO\ResourceDispatchingRoutingScheduling\new one\Algorithm\bin\Debug\net6.0\Algorithm.dll
+C:\Users\inci\Desktop\OPTIPRO\ResourceDispatchingRoutingScheduling\new one\Algorithm\bin\Debug\net6.0\Algorithm.pdb
+C:\Users\inci\Desktop\OPTIPRO\ResourceDispatchingRoutingScheduling\new one\Algorithm\obj\Debug\net6.0\Algorithm.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\inci\Desktop\OPTIPRO\ResourceDispatchingRoutingScheduling\new one\Algorithm\obj\Debug\net6.0\Algorithm.AssemblyInfoInputs.cache
+C:\Users\inci\Desktop\OPTIPRO\ResourceDispatchingRoutingScheduling\new one\Algorithm\obj\Debug\net6.0\Algorithm.AssemblyInfo.cs
+C:\Users\inci\Desktop\OPTIPRO\ResourceDispatchingRoutingScheduling\new one\Algorithm\obj\Debug\net6.0\Algorithm.csproj.CoreCompileInputs.cache
+C:\Users\inci\Desktop\OPTIPRO\ResourceDispatchingRoutingScheduling\new one\Algorithm\obj\Debug\net6.0\Algorithm.sourcelink.json
+C:\Users\inci\Desktop\OPTIPRO\ResourceDispatchingRoutingScheduling\new one\Algorithm\obj\Debug\net6.0\Algorithm.dll
+C:\Users\inci\Desktop\OPTIPRO\ResourceDispatchingRoutingScheduling\new one\Algorithm\obj\Debug\net6.0\refint\Algorithm.dll
+C:\Users\inci\Desktop\OPTIPRO\ResourceDispatchingRoutingScheduling\new one\Algorithm\obj\Debug\net6.0\Algorithm.pdb
+C:\Users\inci\Desktop\OPTIPRO\ResourceDispatchingRoutingScheduling\new one\Algorithm\obj\Debug\net6.0\ref\Algorithm.dll
