@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Debug Board</title>
+        <meta charset="UTF-8" />
+        <link
+            href="https://cdnjs.cloudflare.com/ajax/libs/jsoneditor/9.10.0/jsoneditor.min.css"
+            rel="stylesheet"
+            type="text/css"
+        />
+
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jsoneditor/9.10.0/jsoneditor.min.js"></script>
+        <link rel="stylesheet" href="styles/main.css" />
+    </head>
+
+    <body>
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-box assigned"></div>
+                <span>Best Technician Assignment</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box pre-assigned"></div>
+                <span>Pre-assigned</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box assignment"></div>
+                <span>Assignment</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box unassigned"></div>
+                <span>Unassigned</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box non-availability"></div>
+                <span>Non-Availability</span>
+            </div>
+            <div class="legend-item">
+                P: <strong>Priority</strong> - 
+                R: <strong>Eligible Technician Rank</strong> - 
+                D: <strong>Distance</strong>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="technicians" id="techList"></div>
+            <div class="timeline-container">
+                <div class="timeline" id="timeline"></div>
+                <div class="unassigned-section" id="unassigned"></div>
+            </div>
+        </div>
+
+        <div class="input-container">
+            <div class="input-group">
+                <label for="request">Request</label>
+                <div id="requestEditor" style="height: 400px"></div>
+            </div>
+            <div class="input-group">
+                <label for="response">Response</label>
+                <div id="responseEditor" style="height: 400px"></div>
+            </div>
+            <div class="controls">
+                <div class="timezone-selector">
+                    <label for="timezone">Timezone</label>
+                    <select id="timezone">
+                        <option value="UTC">UTC</option>
+                        <option value="America/New_York" selected>
+                            US Eastern (ET)
+                        </option>
+                        <option value="America/Chicago">US Central (CT)</option>
+                        <option value="America/Denver">US Mountain (MT)</option>
+                        <option value="America/Phoenix">US Arizona (AZ)</option>
+                        <option value="America/Los_Angeles">
+                            US Pacific (PT)
+                        </option>
+                        <option value="America/Anchorage">
+                            US Alaska (AKT)
+                        </option>
+                        <option value="Pacific/Honolulu">US Hawaii (HT)</option>
+                    </select>
+                </div>
+                <button onclick="processData()">Process</button>
+            </div>
+        </div>
+
+        <script src="scripts/constants.js"></script>
+        <script src="scripts/helpers.js"></script>
+        <script src="scripts/renderers.js"></script>
+        <script src="scripts/jsonEditor.js"></script>
+        <script src="scripts/main.js"></script>
+    </body>
+</html>
