@@ -2,16 +2,6 @@
 """
 Builds the requested dataloader JSON from the given Excel and existing
 distance/duration matrices.
-
-This version:
-- Uses RAPOR sheet column 'Z' as the appointment job start time
-- Sets job end = job start + adjusted duration
-- Leaves arrival windows unchanged (still parsed from 'Randevu Tarih saat')
-- Cleans trailing zeros in coordinate strings
-- Normalizes coord-like keys in matrices
-- Appends '_fixed_arrivals' ONCE to the output file name
-- Parses 'Z' start times with explicit formats to avoid pandas dayfirst warnings
-- Reads RAPOR sheet column 'T' as technician(s) for each appointment and sets "technician_ids"
 """
 
 import json
@@ -30,24 +20,23 @@ SHEET_UGCTS = "Ürün grubu çağrı tipi süre"
 
 DISTANCE_JSON = "distance.json"
 DURATION_JSON = "duration.json"
-
-OUTPUT_JSON = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-10_03_2025_fixed_arrivals.json"
-
-# Which Excel columns (letters) to use in RAPOR sheet:
-START_TIME_COLUMN_LETTER = "Z"   # job start time
-TECH_COLUMN_LETTER = "T"         # technician of an appointment
+#./scenarios/technician_capacity_120-driving_speed_60kmh/
+OUTPUT_JSON = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-10_03_2025.json"
 # --------------------------------------------------
 
 def normalize_text(s: Optional[str]) -> str:
+    """Trim and collapse internal whitespace; return '' for None."""
     if s is None:
         return ""
     return " ".join(str(s).strip().split())
 
 def _to_z_no_ms(dt_like) -> str:
+    """Format datetime as 'YYYY-MM-DDTHH:MM:SSZ'."""
     ts = pd.to_datetime(dt_like)
     return ts.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 def _to_z_ms(dt_like) -> str:
+    """Format datetime as 'YYYY-MM-DDTHH:MM:SS.000Z' (force .000)."""
     ts = pd.to_datetime(dt_like)
     return ts.strftime("%Y-%m-%dT%H:%M:%S") + ".000Z"
 
@@ -62,6 +51,7 @@ def build_duration_lookups(ugcts: pd.DataFrame):
     pg_col = "Ürün grubu"
     dur_col = "Süre"
 
+    # Wildcard rows: Ürün grubu contains '*'
     wc_rows = ugcts[ugcts[pg_col].astype(str).str.contains(r"\*", na=False)]
     for _, row in wc_rows.iterrows():
         a_ct = normalize_text(row.get(ct_col))
@@ -73,6 +63,7 @@ def build_duration_lookups(ugcts: pd.DataFrame):
         except Exception:
             pass
 
+    # Exact rows: Ürün grubu does NOT contain '*'
     ex_rows = ugcts[~ugcts[pg_col].astype(str).str.contains(r"\*", na=False)]
     for _, row in ex_rows.iterrows():
         a_ct = normalize_text(row.get(ct_col))
@@ -115,71 +106,36 @@ def parse_coord_latlon_to_lonlat_str(val: str) -> Optional[str]:
     except Exception:
         return None
 
-# ---------- Coordinate cleaners ----------
-_COORD_NUM_RE = re.compile(r"^[\+\-]?\d+(?:\.\d+)?$")
-
-def _strip_trailing_zeros(num_str: str) -> str:
-    s = num_str.strip()
-    if "." in s:
-        s = s.rstrip("0").rstrip(".")
-    return s
-
-def _is_coord_string(s: str) -> bool:
-    if not isinstance(s, str):
-        return False
-    t = s.strip()
-    if "," in t:
-        part1, part2 = [p.strip() for p in t.split(",", 1)]
-    elif ";" in t:
-        part1, part2 = [p.strip() for p in t.split(";", 1)]
-    else:
-        return False
-    return bool(_COORD_NUM_RE.match(part1)) and bool(_COORD_NUM_RE.match(part2))
-
-def clean_coord_str(coord: Optional[str]) -> Optional[str]:
-    if not isinstance(coord, str):
-        return coord
-    s = coord.strip()
-    if not s:
-        return s
-    sep = "," if "," in s else (";" if ";" in s else None)
-    if not sep:
-        return s
-    a, b = [p.strip() for p in s.split(sep, 1)]
-    if not (_COORD_NUM_RE.match(a) and _COORD_NUM_RE.match(b)):
-        return s
-    a2 = _strip_trailing_zeros(a)
-    b2 = _strip_trailing_zeros(b)
-    return f"{a2}, {b2}"
-
-def remap_coord_keys_if_any(d: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:
-    out: Dict[str, Dict[str, int]] = {}
-    for from_k, inner in d.items():
-        new_from = clean_coord_str(from_k) if _is_coord_string(from_k) else from_k
-        out[new_from] = {}
-        for to_k, v in inner.items():
-            new_to = clean_coord_str(to_k) if _is_coord_string(to_k) else to_k
-            out[new_from][new_to] = v
-    return out
-# -------------------------------------------------
-
-# ---------- Arrival-window parser (unchanged) ----------
+# ---------- NEW: robust normalization + parser ----------
 def _normalize_aw(s: str) -> str:
+    """Normalize different dash types and spaces; keep content intact."""
     if not isinstance(s, str):
         return ""
+    # normalize dashes: figure dash, en dash, em dash, minus sign -> '-'
     s = (s.replace("\u2012", "-")
            .replace("\u2013", "-")
            .replace("\u2014", "-")
            .replace("\u2212", "-"))
+    # NBSP -> space
     s = s.replace("\xa0", " ")
+    # collapse whitespace (keeps single spaces)
     s = " ".join(s.split())
     return s
 
 def parse_arrival_window(yy: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Accept formats like:
+      - '11.03.2025 08:00-10:00'
+      - '11.03.2025 08:00:00-10:00:00'
+      - '11.03.2025 10:00:00–12:00:00' (en dash)
+      - '11.03.2025 15:00:0017:00:00' (no separator)
+    Returns (start_iso, end_iso) in 'YYYY-MM-DDTHH:MM:SS'
+    """
     if not isinstance(yy, str):
         return None, None
     s = _normalize_aw(yy)
 
+    # 1) capture the date
     m_date = re.search(r"(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})", s)
     if not m_date:
         return None, None
@@ -189,8 +145,10 @@ def parse_arrival_window(yy: str) -> Tuple[Optional[str], Optional[str]]:
     except Exception:
         return None, None
 
+    # 2) capture all time tokens (HH:MM[:SS])
     times = re.findall(r"\b(\d{1,2}:\d{2}(?::\d{2})?)\b", s)
     if len(times) < 2:
+        # fallback: packed times like '15:00:0017:00:00'
         packed = re.search(r"(\d{1,2}:\d{2}(?::\d{2})?)(\d{1,2}:\d{2}(?::\d{2})?)", s)
         if packed:
             times = [packed.group(1), packed.group(2)]
@@ -228,111 +186,12 @@ def numeric_or_none(x) -> Optional[float]:
     except Exception:
         return None
 
-# ---------- Helper: Excel letter -> zero-based index ----------
-def excel_col_to_index(col_letter: str) -> int:
-    s = col_letter.strip().upper()
-    if not s or not all('A' <= ch <= 'Z' for ch in s):
-        raise ValueError(f"Invalid Excel column letter: {col_letter}")
-    idx = 0
-    for ch in s:
-        idx = idx * 26 + (ord(ch) - ord('A') + 1)
-    return idx - 1
-
-# ---------- NEW: robust, warning-free job-start parser ----------
-_YMD_HMS = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?\s*$")
-_DMY_HMS = re.compile(r"^\s*(\d{1,2})[./-](\d{1,2})[./-](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$")
-_ONLY_DATE_YMD = re.compile(r"^\s*\d{4}-\d{2}-\d{2}\s*$")
-_ONLY_DATE_DMY = re.compile(r"^\s*\d{1,2}[./-]\d{1,2}[./-]\d{4}\s*$")
-
-def parse_job_start(raw) -> Optional[pd.Timestamp]:
-    """
-    Parse RAPOR 'Z' column value into a Timestamp with explicit formats when possible,
-    falling back safely. Handles:
-      - 'YYYY-MM-DD HH:MM[:SS]'
-      - 'DD.MM.YYYY HH:MM[:SS]'
-      - Date-only variants above (assumes 00:00)
-      - Excel serial numbers (days since 1899-12-30)
-    """
-    if raw is None:
-        return None
-    s = str(raw).strip()
-    if not s:
-        return None
-
-    n = pd.to_numeric(s, errors="coerce")
-    if pd.notna(n):
-        try:
-            return pd.to_datetime(n, unit="D", origin="1899-12-30")
-        except Exception:
-            pass
-
-    if _YMD_HMS.match(s):
-        fmt = "%Y-%m-%d %H:%M:%S" if s.count(":") == 2 else "%Y-%m-%d %H:%M"
-        return pd.to_datetime(s.replace("T", " "), format=fmt, errors="coerce")
-
-    if _DMY_HMS.match(s):
-        s2 = re.sub(r"[/-]", ".", s)
-        fmt = "%d.%m.%Y %H:%M:%S" if s2.count(":") == 2 else "%d.%m.%Y %H:%M"
-        return pd.to_datetime(s2, format=fmt, errors="coerce")
-
-    if _ONLY_DATE_YMD.match(s):
-        return pd.to_datetime(s, format="%Y-%m-%d", errors="coerce")
-
-    if _ONLY_DATE_DMY.match(s):
-        s2 = re.sub(r"[/-]", ".", s)
-        return pd.to_datetime(s2, format="%d.%m.%Y", errors="coerce")
-
-    return pd.to_datetime(s, dayfirst=True, errors="coerce")
-# -------------------------------------------------------------
-
-def ensure_suffix_once(path_str: str, suffix: str = "_fixed_arrivals") -> str:
-    p = Path(path_str)
-    stem = p.stem
-    if re.search(r"(?:_fixed_arrival|_fixed_arrivals)$", stem, flags=re.IGNORECASE):
-        new_stem = re.sub(r"(?:_fixed_arrival|_fixed_arrivals)$", suffix, stem, flags=re.IGNORECASE)
-    else:
-        new_stem = stem + suffix
-    return str(p.with_name(new_stem + p.suffix))
-
-# ---------- NEW: parse tech ids from RAPOR column T ----------
-def parse_technician_ids(val) -> List[str]:
-    """
-    Accept 'T' values like 'T001', 'T001,T002', 'T001; T002', 'T001|T002', 'T001 T002' etc.
-    Returns a list of normalized non-empty strings.
-    """
-    if val is None:
-        return []
-    s = str(val).strip()
-    if not s:
-        return []
-    # unify separators to comma
-    s = re.sub(r"[;|/]", ",", s)
-    # also split on whitespace
-    parts = []
-    for chunk in s.split(","):
-        parts.extend(chunk.strip().split())
-    return [normalize_text(p) for p in parts if normalize_text(p)]
-# -------------------------------------------------------------
-
 def main():
     # --- Load Excel ---
     xls = pd.ExcelFile(INPUT_XLSX, engine="openpyxl")
     rapor = pd.read_excel(xls, sheet_name=SHEET_RAPOR, dtype=str)
     tech = pd.read_excel(xls, sheet_name=SHEET_TECH, dtype=str)
     ugcts = pd.read_excel(xls, sheet_name=SHEET_UGCTS, dtype=str)
-
-    # Determine RAPOR start-time & technician column names by Excel letters
-    try:
-        start_col_idx = excel_col_to_index(START_TIME_COLUMN_LETTER)
-        START_TIME_COLNAME = rapor.columns[start_col_idx]
-    except Exception:
-        START_TIME_COLNAME = None
-
-    try:
-        tech_col_idx = excel_col_to_index(TECH_COLUMN_LETTER)
-        TECH_COLNAME = rapor.columns[tech_col_idx]
-    except Exception:
-        TECH_COLNAME = None
 
     exact_dur, wildcard_dur = build_duration_lookups(ugcts)
 
@@ -352,7 +211,7 @@ def main():
         "distance_limit_between_jobs": 40000,
         "start_day_at_office": True,
         "start_point_after_unavailability": "office",
-        "respect_scheduled_times": True,
+        "respect_scheduled_times": False,
         "call_grouping": False,
         "disable_drive_time_inclusion": False,
         "use_service_zones": False,
@@ -364,50 +223,32 @@ def main():
         "capacity_weight": 1,
         "lunch_break": None,
     }
-    options["office"]["coordinate"] = clean_coord_str(options["office"]["coordinate"])
     ph_start = options["planning_horizon"]["start"]
     ph_end = options["planning_horizon"]["end"]
     office_coord = options["office"]["coordinate"]
     office_zone = options["office"]["zone"]
 
-    # --- Technicians (list for known IDs) ---
-    known_tech_ids = sorted(
-        {
-            normalize_text(t)
-            for t in tech.get("Teknisyen no", pd.Series(dtype=str)).tolist()
-            if isinstance(t, str) and normalize_text(t)
-        }
-    )
-    technicians = []
-    for tid in known_tech_ids:
-        technicians.append(
-            {
-                "id": tid,
-                "home": {"coordinate": office_coord, "zone": office_zone},
-                "work_time": {"start": ph_start, "end": ph_end},
-                "non_availabilities": [],
-                "name": tid,
-            }
-        )
-
-    # --- Appointments ---
+    # --- Appointments (diagnostic + tolerant) ---
     appointments: List[Dict] = []
-    dropped = []
+    dropped = []  # collect reasons
 
-    KEEP_IF_NO_DURATION = False
+    # knobs: choose behavior instead of skipping
+    KEEP_IF_NO_DURATION = False          # if True -> default to 60 min when duration missing
     DEFAULT_DURATION_MIN = 60
-    KEEP_IF_NO_WINDOW = False
+    KEEP_IF_NO_WINDOW = False            # if True -> use planning horizon as arrival window when parsing fails
+    USE_PH_AS_JOB_TIMES_IF_NO_WINDOW = False  # or also use PH as job start/end
 
     for idx, r in rapor.iterrows():
         row_id = str(r.get("Teyit No") or f"row{idx}")
 
-        # Coordinate / zone
+        # --- coordinate / zone ---
         loc_coord = parse_coord_latlon_to_lonlat_str(r.get("Müşteri Koordinat"))
         zone_id = normalize_text(r.get("Müşteri İlçe"))
-        if loc_coord:
-            loc_coord = clean_coord_str(loc_coord)
+        if not loc_coord:
+            # keep going; matrix may still allow travel by ids even if coordinate empty
+            pass
 
-        # Arrival window (unchanged)
+        # --- arrival window ---
         start_iso, end_iso = parse_arrival_window(r.get("Randevu Tarih saat"))
         if (not start_iso or not end_iso):
             if KEEP_IF_NO_WINDOW:
@@ -417,10 +258,11 @@ def main():
                 dropped.append((row_id, "no_arrival_window"))
                 continue
 
-        # Duration
+        # --- duration ---
         call_type = normalize_text(r.get("Çağrı Tipi"))
         product_group = normalize_text(r.get("Ürün grubu adı"))
         duration_min = get_appt_duration_minutes(call_type, product_group, exact_dur, wildcard_dur)
+
         if duration_min is None:
             if KEEP_IF_NO_DURATION:
                 duration_min = DEFAULT_DURATION_MIN
@@ -428,62 +270,49 @@ def main():
                 dropped.append((row_id, "no_duration_mapping"))
                 continue
 
-        # Times
+        # --- build times (be robust) ---
         try:
-            arrival_start_ref = _to_z_ms(pd.to_datetime(start_iso))
-            arrival_end_ref   = _to_z_ms(pd.to_datetime(end_iso))
+            start_dt = pd.to_datetime(start_iso)
 
+            # Adjusted job duration: end - start = duration_min / 1.2
             DURATION_DIVISOR = 1
             adjusted_minutes = float(duration_min) / DURATION_DIVISOR
+
+            # safety: avoid non-sense values
             if not (adjusted_minutes > 0 and adjusted_minutes < 24 * 60 * 30):
                 raise ValueError(f"adjusted_minutes out of range: {adjusted_minutes}")
 
-            # Preferred start from RAPOR column Z
-            job_start_dt: Optional[pd.Timestamp] = None
-            if START_TIME_COLNAME is not None:
-                raw_start_val = r.get(START_TIME_COLNAME)
-                if raw_start_val is not None and str(raw_start_val).strip():
-                    job_start_dt = parse_job_start(raw_start_val)
-            if job_start_dt is None or pd.isna(job_start_dt):
-                job_start_dt = pd.to_datetime(start_iso)
+            if USE_PH_AS_JOB_TIMES_IF_NO_WINDOW and not parse_arrival_window(r.get("Randevu Tarih saat"))[0]:
+                job_start_ref = _to_z_no_ms(pd.to_datetime(options["planning_horizon"]["start"]))
+                job_end_ref   = _to_z_no_ms(pd.to_datetime(options["planning_horizon"]["end"]))
+            else:
+                job_start_ref = _to_z_no_ms(start_dt)
+                job_end_ref   = _to_z_no_ms(start_dt + pd.to_timedelta(adjusted_minutes, unit="m"))
 
-            job_end_dt = job_start_dt + pd.to_timedelta(adjusted_minutes, unit="m")
-            job_start_ref = _to_z_no_ms(job_start_dt)
-            job_end_ref   = _to_z_no_ms(job_end_dt)
-
+            arrival_start_ref = _to_z_ms(start_dt)
+            arrival_end_ref   = _to_z_ms(pd.to_datetime(end_iso))
         except Exception as e:
             dropped.append((row_id, f"time_build_error:{e}"))
             continue
 
-        # Technician IDs from RAPOR column T
-        tech_ids_for_row: List[str] = []
-        if TECH_COLNAME is not None:
-            tech_ids_for_row = parse_technician_ids(r.get(TECH_COLNAME))
 
-        # Optionally, warn if any are unknown
-        unknown = [t for t in tech_ids_for_row if t not in known_tech_ids]
-        if unknown:
-            print(f"⚠️ Row {row_id}: technician(s) not found in TECH sheet -> {unknown}")
-
-        # Build BU
+        appt_id = normalize_text(r.get("Teyit No")) or row_id
+        appt_name = normalize_text(r.get("Müşteri no"))
         bu_id = build_business_unit_id(
             r.get("Çağrı Tipi"),
             r.get("Ürün grubu adı"),
             r.get("Yetkinlik grubu"),
         )
 
-        appt_id = normalize_text(r.get("Teyit No")) or row_id
-        appt_name = normalize_text(r.get("Müşteri no"))
-
         appointments.append(
             {
                 "location": {"coordinate": loc_coord, "zone": zone_id or None},
                 "arrival_window": {"start": arrival_start_ref, "end": arrival_end_ref},
-                "eligible_technicians": [],            # will be filled from BU below
+                "eligible_technicians": [],
                 "id": appt_id,
                 "start": job_start_ref,
                 "end": job_end_ref,
-                "technician_ids": tech_ids_for_row,    # <-- SET FROM COLUMN T
+                "technician_ids": [],
                 "priority": 1,
                 "name": appt_name,
                 "business_unit_id": bu_id,
@@ -497,7 +326,7 @@ def main():
         for rid, reason in dropped[:10]:
             print(f"  - {rid}: {reason}")
 
-    # Zones
+    # --- Zones ---
     unique_zones = sorted(
         {
             normalize_text(z)
@@ -507,7 +336,27 @@ def main():
     )
     zones = [{"id": z, "can_go_with": []} for z in unique_zones]
 
-    # Business Units from RAPOR
+    # --- Technicians ---
+    tech_ids = sorted(
+        {
+            normalize_text(t)
+            for t in tech.get("Teknisyen no", pd.Series(dtype=str)).tolist()
+            if isinstance(t, str) and normalize_text(t)
+        }
+    )
+    technicians = []
+    for tid in tech_ids:
+        technicians.append(
+            {
+                "id": tid,
+                "home": {"coordinate": office_coord, "zone": office_zone},
+                "work_time": {"start": ph_start, "end": ph_end},
+                "non_availabilities": [],
+                "name": tid,
+            }
+        )
+
+    # --- Business Units from RAPOR ---
     bu_records = {}
     for _, r in rapor.iterrows():
         call_type = normalize_text(r.get("Çağrı Tipi"))
@@ -525,7 +374,7 @@ def main():
                 "technician_ids": set(),
             }
 
-    # Buffer slot rules
+    # --- buffer_slot_length rules ---
     if not ugcts.empty:
         ct_col = "Çağrı tipi"
         pg_col = "Ürün grubu"
@@ -553,10 +402,10 @@ def main():
                 if bu["call_type"] == a_ct and bu["product_group"] == b_pg:
                     bu["buffer_slot_length"] = c_len
 
-    # Technician eligibility rules from TECH sheet
+    # --- technician_ids rules (respect wildcards, normalize text) ---
     t_id_col = "Teknisyen no"
-    t_pg_col = "Çağrı Tanım"
-    t_comp_col = "Yetkinlik tanım"
+    t_pg_col = "Çağrı Tanım"        # CALL TYPE name
+    t_comp_col = "Yetkinlik tanım"  # competency/product family
 
     if not tech.empty:
         for _, row in tech.iterrows():
@@ -567,14 +416,17 @@ def main():
             d_comp = normalize_text(row.get(t_comp_col))
 
             if "*" in d_comp:
+                # wildcard → all BUs with this call type
                 for bu in bu_records.values():
                     if bu["call_type"] == c_calltype:
                         bu["technician_ids"].add(tid)
             else:
+                # exact match → call type + competency must both match
                 for bu in bu_records.values():
                     if bu["call_type"] == c_calltype and bu["competency"] == d_comp:
                         bu["technician_ids"].add(tid)
 
+    # Materialize business_units list
     business_units = []
     for bu in sorted(bu_records.values(), key=lambda x: x["id"]):
         buf_len = bu["buffer_slot_length"]
@@ -592,13 +444,13 @@ def main():
             }
         )
 
-    # Fill eligible_technicians from BU
+    # --- Fill eligible_technicians for each appointment from its BU ---
     bu_to_tech = {b["id"]: b["technician_ids"] for b in business_units}
     for appt in appointments:
         techs = bu_to_tech.get(appt["business_unit_id"], [])
         appt["eligible_technicians"] = [{"id": tid, "score": 1} for tid in techs]
 
-    # Matrices
+    # --- Matrix (convert all values to int) ---
     def convert_matrix_values_to_int(matrix_obj: Dict) -> Dict:
         result = {}
         for from_id, inner in matrix_obj.items():
@@ -618,20 +470,17 @@ def main():
                 try:
                     if (val == 0 or val is None) and from_id != to_id:
                         result[from_id][to_id] = 0
-                    result[from_id][to_id] = int(float(val))
+                    result[from_id][to_id] = int(float(val)) if from_id == to_id else max(int(float(val)), 300)
                 except Exception:
                     result[from_id][to_id] = 0
         return result
 
-    raw_duration = remap_coord_keys_if_any(duration_obj.get("duration", {}))
-    raw_distance = remap_coord_keys_if_any(distance_obj.get("distance", {}))
-
     matrix = {
-        "duration": convert_matrix_values_to_int_duration(raw_duration),
-        "distance": convert_matrix_values_to_int(raw_distance),
+        "duration": convert_matrix_values_to_int_duration(duration_obj.get("duration", {})),
+        "distance": convert_matrix_values_to_int(distance_obj.get("distance", {})),
     }
 
-    # Final payload
+    # --- Final payload ---
     payload: Dict = {
         "appointments": appointments,
         "zones": zones,
@@ -642,12 +491,9 @@ def main():
         "board_id": "",
     }
 
-    # Write with '_fixed_arrivals' once
-    output_path = ensure_suffix_once(OUTPUT_JSON, "_fixed_arrivals")
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(output_path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(OUTPUT_JSON).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(
-        f"✅ Wrote {output_path} with "
+        f"✅ Wrote {OUTPUT_JSON} with "
         f"{len(appointments)} appointments, "
         f"{len(technicians)} technicians, "
         f"{len(zones)} zones, "
