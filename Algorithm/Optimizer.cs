@@ -364,7 +364,7 @@ public class Optimizer
             return 0;
 
         if (DistanceCosts.ContainsKey(loc1) && DistanceCosts[loc1].ContainsKey(loc2))
-            return (DistanceCosts[loc1][loc2] / 1609)*(0.3);
+            return (DistanceCosts[loc1][loc2]); // / 1609)*(0.3);
 
         return double.MaxValue;
     }
