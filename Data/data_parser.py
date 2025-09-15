@@ -23,15 +23,15 @@ import pandas as pd
 from dateutil import parser as dtparser
 
 # --------------------- CONFIG ---------------------
-INPUT_XLSX = "28002357 Yiğit Klima 10-14 Mart 2025_SON Veri (1).xlsx"
-SHEET_RAPOR = "RAPOR-10_03_2025"
+INPUT_XLSX = "28002357 Yiğit Klima 10-14 Mart 2025_SON Veri_Düzeltilmiştir.xlsx"
+SHEET_RAPOR = "RAPOR-14_03_2025"
 SHEET_TECH = "Teknisyen Yetkinlikleri"
 SHEET_UGCTS = "Ürün grubu çağrı tipi süre"
 
 DISTANCE_JSON = "distance.json"
 DURATION_JSON = "duration.json"
 
-OUTPUT_JSON = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-10_03_2025_fixed_arrivals.json"
+OUTPUT_JSON = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-14_03_2025_fixed_arrivals.json"
 
 # Which Excel columns (letters) to use in RAPOR sheet:
 START_TIME_COLUMN_LETTER = "Z"   # job start time
@@ -346,7 +346,7 @@ def main():
     options = {
         "account_id": None,
         "office": {"coordinate": "27.436587,38.626512", "zone": "ŞEHZADELER"},
-        "planning_horizon": {"start": "2025-03-10T08:00:00", "end": "2025-03-10T23:00:00"},
+        "planning_horizon": {"start": "2025-03-14T08:00:00", "end": "2025-03-14T23:00:00"},
         "run_time_limit": 120,
         "enable_buffer_slot": False,
         "distance_limit_between_jobs": 40000,
@@ -447,7 +447,8 @@ def main():
             if job_start_dt is None or pd.isna(job_start_dt):
                 job_start_dt = pd.to_datetime(start_iso)
 
-            job_end_dt = job_start_dt + pd.to_timedelta(adjusted_minutes, unit="m")
+            job_end_dt = job_start_dt 
+            job_start_dt = job_end_dt - pd.to_timedelta(adjusted_minutes, unit="m")
             job_start_ref = _to_z_no_ms(job_start_dt)
             job_end_ref   = _to_z_no_ms(job_end_dt)
 

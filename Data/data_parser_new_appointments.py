@@ -13,15 +13,15 @@ import pandas as pd
 from dateutil import parser as dtparser
 
 # --------------------- CONFIG ---------------------
-INPUT_XLSX = "28002357 Yiğit Klima 10-14 Mart 2025_SON Veri (1).xlsx"
-SHEET_RAPOR = "RAPOR-10_03_2025"
+INPUT_XLSX = "28002357 Yiğit Klima 10-14 Mart 2025_SON Veri_Düzeltilmiştir.xlsx"
+SHEET_RAPOR = "RAPOR-14_03_2025"
 SHEET_TECH = "Teknisyen Yetkinlikleri"
 SHEET_UGCTS = "Ürün grubu çağrı tipi süre"
 
 DISTANCE_JSON = "distance.json"
 DURATION_JSON = "duration.json"
 #./scenarios/technician_capacity_120-driving_speed_60kmh/
-OUTPUT_JSON = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-10_03_2025.json"
+OUTPUT_JSON = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-14_03_2025.json"
 # --------------------------------------------------
 
 def normalize_text(s: Optional[str]) -> str:
@@ -128,12 +128,21 @@ def parse_arrival_window(yy: str) -> Tuple[Optional[str], Optional[str]]:
       - '11.03.2025 08:00-10:00'
       - '11.03.2025 08:00:00-10:00:00'
       - '11.03.2025 10:00:00–12:00:00' (en dash)
-      - '11.03.2025 15:00:0017:00:00' (no separator)
+      - '11.03.2025 15:00:0017:00:00'  (no separator; will be auto-fixed)
     Returns (start_iso, end_iso) in 'YYYY-MM-DDTHH:MM:SS'
     """
     if not isinstance(yy, str):
         return None, None
+
     s = _normalize_aw(yy)
+
+    # --- fix jammed times: insert '-' if two time tokens are adjacent with no separator
+    # e.g. '15:00:0017:00:00' -> '15:00:00-17:00:00'
+    s = re.sub(
+        r"(\d{1,2}:\d{2}(?::\d{2})?)\s*(?=\d{1,2}:\d{2}(?::\d{2})?)",
+        r"\1-",
+        s,
+    )
 
     # 1) capture the date
     m_date = re.search(r"(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})", s)
@@ -145,10 +154,10 @@ def parse_arrival_window(yy: str) -> Tuple[Optional[str], Optional[str]]:
     except Exception:
         return None, None
 
-    # 2) capture all time tokens (HH:MM[:SS])
+    # 2) capture time tokens (HH:MM[:SS]); after auto-fix we should have at least 2
     times = re.findall(r"\b(\d{1,2}:\d{2}(?::\d{2})?)\b", s)
     if len(times) < 2:
-        # fallback: packed times like '15:00:0017:00:00'
+        # fallback: still try packed pattern just in case
         packed = re.search(r"(\d{1,2}:\d{2}(?::\d{2})?)(\d{1,2}:\d{2}(?::\d{2})?)", s)
         if packed:
             times = [packed.group(1), packed.group(2)]
@@ -165,6 +174,8 @@ def parse_arrival_window(yy: str) -> Tuple[Optional[str], Optional[str]]:
             return None
 
     return to_iso(t_start), to_iso(t_end)
+
+
 # -------------------------------------------------------
 
 def build_business_unit_id(call_type: str, product_group: str, competency_group: str) -> str:
@@ -205,10 +216,10 @@ def main():
     options = {
         "account_id": None,
         "office": {"coordinate": "27.436587,38.626512", "zone": "ŞEHZADELER"},
-        "planning_horizon": {"start": "2025-03-10T08:00:00", "end": "2025-03-10T23:00:00"},
+        "planning_horizon": {"start": "2025-03-14T08:00:00", "end": "2025-03-14T23:00:00"},
         "run_time_limit": 120,
         "enable_buffer_slot": False,
-        "distance_limit_between_jobs": 40000,
+        "distance_limit_between_jobs": 400000,
         "start_day_at_office": True,
         "start_point_after_unavailability": "office",
         "respect_scheduled_times": False,

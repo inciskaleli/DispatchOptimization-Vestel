@@ -23,9 +23,9 @@ from openpyxl.styles import Font
 import math
 
 # -------- CONFIG --------
-INPUT_RESULT_JSON  = "./scenarios/capacity_weight=0/technician_capacity_100-driving_speed_dynamic/result-10_03_2025.json"
-INPUT_DATALOADER   = "./scenarios/capacity_weight=0/technician_capacity_100-driving_speed_dynamic/dataloader-10_03_2025.json"
-OUTPUT_XLSX        = "./scenarios/capacity_weight=0/technician_capacity_100-driving_speed_dynamic/result-10_03_2025.xlsx"
+INPUT_RESULT_JSON  = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/result-10_03_2025_fixed_arrivals.json"
+INPUT_DATALOADER   = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-10_03_2025_fixed_arrivals.json"
+OUTPUT_XLSX        = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/result-10_03_2025_fixed_arrivals.xlsx"
 SLOT_CAPACITY_MIN  = 120  # 2 hours per slot
 # ------------------------
 
@@ -456,44 +456,65 @@ def build_assignments_with_dist(assignments_df: pd.DataFrame, dl_obj: Dict[str, 
       - per-tech total distance dataframe
     Includes UNASSIGNED (status='outlier' or empty technician_ids) rows in the output sheet,
     with blank tech_id and no hop distance.
+    Also adds 4 extra columns per appointment:
+      'Çağrı tipi', 'Ürün Grubu', 'Yetkinlik Grubu', 'Randevu Tarih Saat'
     """
     if assignments_df.empty:
-        return assignments_df.copy(), pd.DataFrame(columns=["tech_id", "total_distance_m"])
+        empty = assignments_df.copy()
+        # add placeholders + new columns so headers are stable
+        for c in ["cumulative distance", "total distance", "Çağrı tipi", "Ürün Grubu", "Yetkinlik Grubu", "Randevu Tarih Saat"]:
+            empty[c] = None
+        cols_final = [
+            "appointment_id","status","start","end",
+            "tech_id","route_distance","route_duration","dist_from_prev_m",
+            "cumulative distance","total distance",
+            "Çağrı tipi","Ürün Grubu","Yetkinlik Grubu","Randevu Tarih Saat",
+        ]
+        return empty.reindex(columns=cols_final), pd.DataFrame(columns=["tech_id", "total_distance_m"])
 
-    # Determine outliers/unassigned on the raw (non-exploded) frame
-    def _is_unassigned(x) -> bool:
+    # ---------- Build metadata map from dataloader ----------
+    def _fmt_aw(aw: Optional[dict]) -> Optional[str]:
+        if not isinstance(aw, dict):
+            return None
         try:
-            return (str(x.get("status", "")).lower() == "outlier") or not bool(x.get("technician_ids"))
+            sdt = parse_iso_z(aw.get("start", ""))
+            edt = parse_iso_z(aw.get("end", ""))
+            # e.g., '10.03.2025 15:00:00-17:00:00'
+            return f"{sdt.strftime('%d.%m.%Y %H:%M:%S')}-{edt.strftime('%H:%M:%S')}"
         except Exception:
-            return False
+            return None
 
+    appt_meta: Dict[str, Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]] = {}
+    for ap in dl_obj.get("appointments", []):
+        apid = str(ap.get("id"))
+        bu = (ap.get("business_unit_id") or "")
+        parts = bu.split("|")
+        ct = parts[0] if len(parts) > 0 else None
+        pg = parts[1] if len(parts) > 1 else None
+        comp = parts[2] if len(parts) > 2 else None
+        aw_str = _fmt_aw(ap.get("arrival_window"))
+        appt_meta[apid] = (ct, pg, comp, aw_str)
+
+    # ---------- Mark outliers/unassigned on raw frame ----------
     raw = assignments_df.copy()
-    # build a boolean mask safely
     status_col = raw.get("status")
     techs_col = raw.get("technician_ids")
     mask_outlier = (status_col.astype(str).str.lower() == "outlier") | techs_col.apply(lambda v: not bool(v))
 
-    # Appointment coordinate map (as strings that match matrix keys)
+    # ---------- Matrix & coords ----------
     appt_coord_map: Dict[str, Optional[str]] = {}
     for ap in dl_obj.get("appointments", []):
-        apid = str(ap.get("id"))
-        coord = ((ap.get("location") or {}).get("coordinate"))
-        appt_coord_map[apid] = _norm_coord_str(coord)
+        appt_coord_map[str(ap.get("id"))] = _norm_coord_str((ap.get("location") or {}).get("coordinate"))
 
-    # Office & tech home coordinates (strings)
     options = dl_obj.get("options", {}) or {}
     start_at_office = bool(options.get("start_day_at_office", False))
     office_coord_str = _norm_coord_str((options.get("office") or {}).get("coordinate"))
 
     tech_home_map: Dict[str, Optional[str]] = {}
     for t in dl_obj.get("technicians", []):
-        tid = str(t.get("id"))
-        home_coord = (t.get("home") or {}).get("coordinate")
-        tech_home_map[tid] = _norm_coord_str(home_coord)
+        tech_home_map[str(t.get("id"))] = _norm_coord_str((t.get("home") or {}).get("coordinate"))
 
-    # Distance matrix
-    matrix = dl_obj.get("matrix") or {}
-    matrix_distance: Dict[str, Dict[str, Any]] = matrix.get("distance") or {}
+    matrix_distance: Dict[str, Dict[str, Any]] = (dl_obj.get("matrix") or {}).get("distance") or {}
 
     # ---------- Assigned rows: explode & compute distances ----------
     assigned_raw = raw.loc[~mask_outlier].copy()
@@ -535,7 +556,7 @@ def build_assignments_with_dist(assignments_df: pd.DataFrame, dl_obj: Dict[str, 
             "appointment_id","status","start","end","tech_id","route_distance","route_duration","dist_from_prev_m"
         ]].sort_values(["tech_id","start"]))
 
-    # ---------- Outliers/unassigned: keep as single rows with blank tech_id ----------
+    # ---------- Outliers: keep as single rows with blank tech_id ----------
     outliers_raw = raw.loc[mask_outlier, ["appointment_id","status","start","end","route_distance","route_duration"]].copy()
     if outliers_raw.empty:
         outliers_out = pd.DataFrame(columns=assigned_out.columns)
@@ -547,12 +568,35 @@ def build_assignments_with_dist(assignments_df: pd.DataFrame, dl_obj: Dict[str, 
             "appointment_id","status","start","end","tech_id","route_distance","route_duration","dist_from_prev_m"
         ]]
 
-    # ---------- Combine for sheet ----------
+    # ---------- Combine ----------
     df_out = pd.concat([assigned_out, outliers_out], ignore_index=True)
     if not df_out.empty:
         df_out = df_out.sort_values(by=["tech_id","start"], na_position="last")
 
-    # Totals only for real technicians (assigned_out)
+    # ---------- Add the 4 new columns from meta ----------
+    def _from_meta(idx, i):
+        meta = appt_meta.get(str(idx))
+        return meta[i] if meta else None
+
+    df_out["Çağrı tipi"]        = df_out["appointment_id"].map(lambda x: _from_meta(x, 0))
+    df_out["Ürün Grubu"]        = df_out["appointment_id"].map(lambda x: _from_meta(x, 1))
+    df_out["Yetkinlik Grubu"]   = df_out["appointment_id"].map(lambda x: _from_meta(x, 2))
+    df_out["Randevu Tarih Saat"]= df_out["appointment_id"].map(lambda x: _from_meta(x, 3))
+
+    # ---------- Insert placeholders for Excel formula columns (I & J) ----------
+    df_out["cumulative distance"] = None
+    df_out["total distance"] = None
+
+    # Final order: keep E=tech_id, H=dist_from_prev_m, I/J for formula columns
+    cols_final = [
+        "appointment_id","status","start","end",
+        "tech_id","route_distance","route_duration","dist_from_prev_m",
+        "cumulative distance","total distance",
+        "Çağrı tipi","Ürün Grubu","Yetkinlik Grubu","Randevu Tarih Saat",
+    ]
+    df_out = df_out.reindex(columns=cols_final)
+
+    # Totals only for real technicians
     if assigned_out.empty:
         tech_totals = pd.DataFrame(columns=["tech_id","total_distance_m"])
     else:
@@ -562,7 +606,6 @@ def build_assignments_with_dist(assignments_df: pd.DataFrame, dl_obj: Dict[str, 
                        .rename(columns={"dist_from_prev_m":"total_distance_m"}))
 
     return df_out, tech_totals
-
 
 # ----------------- MAIN -----------------
 def main():

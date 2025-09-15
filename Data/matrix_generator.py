@@ -1,7 +1,7 @@
 import pandas as pd
 
 # --- CONFIG ---
-input_excel = "C:\\Users\\inci\\Downloads\\28002357 Yiğit Klima 10-14 Mart 2025_SON Veri.xlsx"   # your Excel file
+input_excel = "28002357 Yiğit Klima 10-14 Mart 2025_SON Veri_Düzeltilmiştir.xlsx"   # your Excel file
 output_txt = "appointments.txt"     # desired output file
 sheet_name = "RAPOR"                # sheet to read
 
