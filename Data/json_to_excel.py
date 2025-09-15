@@ -29,6 +29,7 @@ OUTPUT_XLSX        = "./scenarios/capacity_weight=0/technician_capacity_100-driv
 SLOT_CAPACITY_MIN  = 120  # 2 hours per slot
 # ------------------------
 
+
 SLOT_DEFS: List[Tuple[str, int, int]] = [
     ("08:00-10:00", 8, 10),
     ("10:00-12:00", 10, 12),
