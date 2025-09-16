@@ -355,7 +355,7 @@ public class Optimizer
         if (TimeCosts.ContainsKey(loc1) && TimeCosts[loc1].ContainsKey(loc2))
             return TimeCosts[loc1][loc2] / 60;
 
-        return 5_256_000; // Double.MaxValue;
+        return Double.MaxValue;
     }
 
     public double TravelingCostFromTo(string loc1, string loc2)
@@ -364,7 +364,7 @@ public class Optimizer
             return 0;
 
         if (DistanceCosts.ContainsKey(loc1) && DistanceCosts[loc1].ContainsKey(loc2))
-            return (DistanceCosts[loc1][loc2]); // / 1609)*(0.3);
+            return (DistanceCosts[loc1][loc2] / 1609)*(0.3);
 
         return double.MaxValue;
     }
