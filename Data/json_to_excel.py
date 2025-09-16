@@ -22,10 +22,11 @@ import pandas as pd
 from openpyxl.styles import Font
 import math
 
+sayi = 14
 # -------- CONFIG --------
-INPUT_RESULT_JSON  = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/result-10_03_2025_fixed_arrivals.json"
-INPUT_DATALOADER   = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-10_03_2025_fixed_arrivals.json"
-OUTPUT_XLSX        = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/result-10_03_2025_fixed_arrivals.xlsx"
+INPUT_RESULT_JSON  = f"./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/result-{sayi}_03_2025.json"
+INPUT_DATALOADER   = f"./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-{sayi}_03_2025.json"
+OUTPUT_XLSX        = f"./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/result-{sayi}_03_2025.xlsx"
 SLOT_CAPACITY_MIN  = 120  # 2 hours per slot
 # ------------------------
 

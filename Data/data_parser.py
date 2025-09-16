@@ -22,16 +22,17 @@ from typing import Dict, Tuple, Optional, List
 import pandas as pd
 from dateutil import parser as dtparser
 
+sayi = 14
 # --------------------- CONFIG ---------------------
 INPUT_XLSX = "28002357 Yiğit Klima 10-14 Mart 2025_SON Veri_Düzeltilmiştir.xlsx"
-SHEET_RAPOR = "RAPOR-14_03_2025"
+SHEET_RAPOR = f"RAPOR-{sayi}_03_2025"
 SHEET_TECH = "Teknisyen Yetkinlikleri"
 SHEET_UGCTS = "Ürün grubu çağrı tipi süre"
 
 DISTANCE_JSON = "distance.json"
 DURATION_JSON = "duration.json"
 
-OUTPUT_JSON = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-14_03_2025_fixed_arrivals.json"
+OUTPUT_JSON = f"./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-{sayi}_03_2025_fixed_arrivals.json"
 
 # Which Excel columns (letters) to use in RAPOR sheet:
 START_TIME_COLUMN_LETTER = "Z"   # job start time
@@ -114,6 +115,32 @@ def parse_coord_latlon_to_lonlat_str(val: str) -> Optional[str]:
         return f"{lon},{lat}"
     except Exception:
         return None
+
+def normalize_lonlat_key(s: Optional[str]) -> Optional[str]:
+    """
+    'lon,lat' ya da 'lon;lat' gelen stringi:
+      - boşlukları temizleyip,
+      - float'a çevirip,
+      - en fazla 6 ondalıkla yazıp,
+      - sonda kalan gereksiz 0 ve '.' karakterlerini kırparak
+    'lon,lat' formatında geri döndürür.
+    """
+    if not isinstance(s, str):
+        return None
+    s = s.strip().replace(";", ",")
+    if "," not in s:
+        return s
+    lon_s, lat_s = [p.strip() for p in s.split(",", 1)]
+    try:
+        lon = float(lon_s)
+        lat = float(lat_s)
+        def _trim(x: float) -> str:
+            t = f"{x:.6f}".rstrip("0").rstrip(".")
+            # Tam sayı ise '27.' gibi kalmasın diye:
+            return t if t else "0"
+        return f"{_trim(lon)},{_trim(lat)}"
+    except Exception:
+        return s
 
 # ---------- Coordinate cleaners ----------
 _COORD_NUM_RE = re.compile(r"^[\+\-]?\d+(?:\.\d+)?$")
@@ -346,10 +373,10 @@ def main():
     options = {
         "account_id": None,
         "office": {"coordinate": "27.436587,38.626512", "zone": "ŞEHZADELER"},
-        "planning_horizon": {"start": "2025-03-14T08:00:00", "end": "2025-03-14T23:00:00"},
+        "planning_horizon": {"start": f"2025-03-{sayi}T08:00:00", "end": f"2025-03-{sayi}T23:00:00"},
         "run_time_limit": 120,
         "enable_buffer_slot": False,
-        "distance_limit_between_jobs": 40000,
+        "distance_limit_between_jobs": 400000,
         "start_day_at_office": True,
         "start_point_after_unavailability": "office",
         "respect_scheduled_times": True,
@@ -601,28 +628,46 @@ def main():
 
     # Matrices
     def convert_matrix_values_to_int(matrix_obj: Dict) -> Dict:
-        result = {}
-        for from_id, inner in matrix_obj.items():
-            result[from_id] = {}
-            for to_id, val in inner.items():
+        """
+        Distance matrisi: değerleri int'e çevirir, from/to anahtarlarını normalize eder.
+        """
+        result: Dict[str, Dict[str, int]] = {}
+        for from_id, inner in (matrix_obj or {}).items():
+            nf = normalize_lonlat_key(from_id) or from_id
+            if nf not in result:
+                result[nf] = {}
+            for to_id, val in (inner or {}).items():
+                nt = normalize_lonlat_key(to_id) or to_id
                 try:
-                    result[from_id][to_id] = int(float(val))
+                    iv = int(float(val))
                 except Exception:
-                    result[from_id][to_id] = 0
+                    iv = 0
+                # Çakışma olursa son değer kazanır (istersen max/min alacak şekilde değiştirilebilir)
+                result[nf][nt] = iv
         return result
 
+
     def convert_matrix_values_to_int_duration(matrix_obj: Dict) -> Dict:
-        result = {}
-        for from_id, inner in matrix_obj.items():
-            result[from_id] = {}
-            for to_id, val in inner.items():
+        """
+        Duration matrisi: değerleri int'e çevirir, from/to anahtarlarını normalize eder.
+        Diagonal dışı geçişlere alt sınır uygular (>= 300 sn).
+        """
+        result: Dict[str, Dict[str, int]] = {}
+        for from_id, inner in (matrix_obj or {}).items():
+            nf = normalize_lonlat_key(from_id) or from_id
+            if nf not in result:
+                result[nf] = {}
+            for to_id, val in (inner or {}).items():
+                nt = normalize_lonlat_key(to_id) or to_id
                 try:
-                    if (val == 0 or val is None) and from_id != to_id:
-                        result[from_id][to_id] = 0
-                    result[from_id][to_id] = int(float(val))
+                    iv = int(float(val))
                 except Exception:
-                    result[from_id][to_id] = 0
+                    iv = 0
+                if nf != nt:
+                    iv = max(iv, 300)  # diagonal olmayanlar için alt sınır
+                result[nf][nt] = iv
         return result
+
 
     raw_duration = remap_coord_keys_if_any(duration_obj.get("duration", {}))
     raw_distance = remap_coord_keys_if_any(distance_obj.get("distance", {}))

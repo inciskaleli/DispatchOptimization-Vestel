@@ -12,16 +12,17 @@ from typing import Dict, Tuple, Optional, List
 import pandas as pd
 from dateutil import parser as dtparser
 
+sayi = 14
 # --------------------- CONFIG ---------------------
 INPUT_XLSX = "28002357 Yiğit Klima 10-14 Mart 2025_SON Veri_Düzeltilmiştir.xlsx"
-SHEET_RAPOR = "RAPOR-14_03_2025"
+SHEET_RAPOR = f"RAPOR-{sayi}_03_2025"
 SHEET_TECH = "Teknisyen Yetkinlikleri"
 SHEET_UGCTS = "Ürün grubu çağrı tipi süre"
 
 DISTANCE_JSON = "distance.json"
 DURATION_JSON = "duration.json"
 #./scenarios/technician_capacity_120-driving_speed_60kmh/
-OUTPUT_JSON = "./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-14_03_2025.json"
+OUTPUT_JSON = f"./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-{sayi}_03_2025.json"
 # --------------------------------------------------
 
 def normalize_text(s: Optional[str]) -> str:
@@ -106,19 +107,72 @@ def parse_coord_latlon_to_lonlat_str(val: str) -> Optional[str]:
     except Exception:
         return None
 
+# ---------- NEW: coordinate cleaners ----------
+_COORD_NUM_RE = re.compile(r"^[\+\-]?\d+(?:\.\d+)?$")
+
+def _strip_trailing_zeros(num_str: str) -> str:
+    """Remove trailing zeros (and trailing '.') from a decimal string."""
+    s = num_str.strip()
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s
+
+def _is_coord_string(s: str) -> bool:
+    """Rudimentary check if 's' looks like 'num[,; ]num'."""
+    if not isinstance(s, str):
+        return False
+    t = s.strip()
+    if "," in t:
+        part1, part2 = [p.strip() for p in t.split(",", 1)]
+    elif ";" in t:
+        part1, part2 = [p.strip() for p in t.split(";", 1)]
+    else:
+        return False
+    return bool(_COORD_NUM_RE.match(part1)) and bool(_COORD_NUM_RE.match(part2))
+
+def clean_coord_str(coord: Optional[str]) -> Optional[str]:
+    """Normalize 'lon, lat' text by trimming trailing zeros in each number."""
+    if not isinstance(coord, str):
+        return coord
+    s = coord.strip()
+    if not s:
+        return s
+    sep = "," if "," in s else (";" if ";" in s else None)
+    if not sep:
+        return s
+    a, b = [p.strip() for p in s.split(sep, 1)]
+    if not (_COORD_NUM_RE.match(a) and _COORD_NUM_RE.match(b)):
+        # not a plain numeric coord, return as-is
+        return s
+    a2 = _strip_trailing_zeros(a)
+    b2 = _strip_trailing_zeros(b)
+    return f"{a2}, {b2}"
+
+def remap_coord_keys_if_any(d: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:
+    """
+    For a nested dict-like matrix {from: {to: value}}, if keys look like
+    coordinate strings, normalize them with clean_coord_str().
+    """
+    out: Dict[str, Dict[str, int]] = {}
+    for from_k, inner in d.items():
+        new_from = clean_coord_str(from_k) if _is_coord_string(from_k) else from_k
+        out[new_from] = {}
+        for to_k, v in inner.items():
+            new_to = clean_coord_str(to_k) if _is_coord_string(to_k) else to_k
+            out[new_from][new_to] = v
+    return out
+# -------------------------------------------------
+
 # ---------- NEW: robust normalization + parser ----------
 def _normalize_aw(s: str) -> str:
     """Normalize different dash types and spaces; keep content intact."""
     if not isinstance(s, str):
         return ""
-    # normalize dashes: figure dash, en dash, em dash, minus sign -> '-'
     s = (s.replace("\u2012", "-")
            .replace("\u2013", "-")
            .replace("\u2014", "-")
            .replace("\u2212", "-"))
-    # NBSP -> space
     s = s.replace("\xa0", " ")
-    # collapse whitespace (keeps single spaces)
     s = " ".join(s.split())
     return s
 
@@ -128,23 +182,13 @@ def parse_arrival_window(yy: str) -> Tuple[Optional[str], Optional[str]]:
       - '11.03.2025 08:00-10:00'
       - '11.03.2025 08:00:00-10:00:00'
       - '11.03.2025 10:00:00–12:00:00' (en dash)
-      - '11.03.2025 15:00:0017:00:00'  (no separator; will be auto-fixed)
+      - '11.03.2025 15:00:0017:00:00' (no separator)
     Returns (start_iso, end_iso) in 'YYYY-MM-DDTHH:MM:SS'
     """
     if not isinstance(yy, str):
         return None, None
-
     s = _normalize_aw(yy)
 
-    # --- fix jammed times: insert '-' if two time tokens are adjacent with no separator
-    # e.g. '15:00:0017:00:00' -> '15:00:00-17:00:00'
-    s = re.sub(
-        r"(\d{1,2}:\d{2}(?::\d{2})?)\s*(?=\d{1,2}:\d{2}(?::\d{2})?)",
-        r"\1-",
-        s,
-    )
-
-    # 1) capture the date
     m_date = re.search(r"(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})", s)
     if not m_date:
         return None, None
@@ -154,10 +198,8 @@ def parse_arrival_window(yy: str) -> Tuple[Optional[str], Optional[str]]:
     except Exception:
         return None, None
 
-    # 2) capture time tokens (HH:MM[:SS]); after auto-fix we should have at least 2
     times = re.findall(r"\b(\d{1,2}:\d{2}(?::\d{2})?)\b", s)
     if len(times) < 2:
-        # fallback: still try packed pattern just in case
         packed = re.search(r"(\d{1,2}:\d{2}(?::\d{2})?)(\d{1,2}:\d{2}(?::\d{2})?)", s)
         if packed:
             times = [packed.group(1), packed.group(2)]
@@ -174,8 +216,6 @@ def parse_arrival_window(yy: str) -> Tuple[Optional[str], Optional[str]]:
             return None
 
     return to_iso(t_start), to_iso(t_end)
-
-
 # -------------------------------------------------------
 
 def build_business_unit_id(call_type: str, product_group: str, competency_group: str) -> str:
@@ -216,7 +256,7 @@ def main():
     options = {
         "account_id": None,
         "office": {"coordinate": "27.436587,38.626512", "zone": "ŞEHZADELER"},
-        "planning_horizon": {"start": "2025-03-14T08:00:00", "end": "2025-03-14T23:00:00"},
+        "planning_horizon": {"start": f"2025-03-{sayi}T08:00:00", "end": f"2025-03-{sayi}T23:00:00"},
         "run_time_limit": 120,
         "enable_buffer_slot": False,
         "distance_limit_between_jobs": 400000,
@@ -234,6 +274,8 @@ def main():
         "capacity_weight": 1,
         "lunch_break": None,
     }
+    # Normalize office coordinate
+    options["office"]["coordinate"] = clean_coord_str(options["office"]["coordinate"])
     ph_start = options["planning_horizon"]["start"]
     ph_end = options["planning_horizon"]["end"]
     office_coord = options["office"]["coordinate"]
@@ -255,9 +297,8 @@ def main():
         # --- coordinate / zone ---
         loc_coord = parse_coord_latlon_to_lonlat_str(r.get("Müşteri Koordinat"))
         zone_id = normalize_text(r.get("Müşteri İlçe"))
-        if not loc_coord:
-            # keep going; matrix may still allow travel by ids even if coordinate empty
-            pass
+        if loc_coord:
+            loc_coord = clean_coord_str(loc_coord)  # NEW: trim trailing zeros
 
         # --- arrival window ---
         start_iso, end_iso = parse_arrival_window(r.get("Randevu Tarih saat"))
@@ -284,12 +325,8 @@ def main():
         # --- build times (be robust) ---
         try:
             start_dt = pd.to_datetime(start_iso)
-
-            # Adjusted job duration: end - start = duration_min / 1.2
             DURATION_DIVISOR = 1
             adjusted_minutes = float(duration_min) / DURATION_DIVISOR
-
-            # safety: avoid non-sense values
             if not (adjusted_minutes > 0 and adjusted_minutes < 24 * 60 * 30):
                 raise ValueError(f"adjusted_minutes out of range: {adjusted_minutes}")
 
@@ -305,7 +342,6 @@ def main():
         except Exception as e:
             dropped.append((row_id, f"time_build_error:{e}"))
             continue
-
 
         appt_id = normalize_text(r.get("Teyit No")) or row_id
         appt_name = normalize_text(r.get("Müşteri no"))
@@ -481,14 +517,21 @@ def main():
                 try:
                     if (val == 0 or val is None) and from_id != to_id:
                         result[from_id][to_id] = 0
-                    result[from_id][to_id] = int(float(val)) if from_id == to_id else max(int(float(val)), 300)
+                    result[from_id][to_id] = int(float(val))
                 except Exception:
                     result[from_id][to_id] = 0
         return result
 
+    # --- NEW: normalize coord-looking keys in raw matrices BEFORE int conversion ---
+    raw_duration = duration_obj.get("duration", {})
+    raw_distance = distance_obj.get("distance", {})
+
+    raw_duration = remap_coord_keys_if_any(raw_duration)
+    raw_distance = remap_coord_keys_if_any(raw_distance)
+
     matrix = {
-        "duration": convert_matrix_values_to_int_duration(duration_obj.get("duration", {})),
-        "distance": convert_matrix_values_to_int(distance_obj.get("distance", {})),
+        "duration": convert_matrix_values_to_int_duration(raw_duration),
+        "distance": convert_matrix_values_to_int(raw_distance),
     }
 
     # --- Final payload ---
