@@ -1,0 +1,35 @@
+# Visual Studio user-specific files
+.vs/
+
+# Build results
+bin/
+obj/
+
+# NuGet packages
+*.nupkg
+# (NuGet packages can be restored, no need to commit them)
+packages/
+
+# Visual Studio cache files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build logs
+*.log
+
+# Others
+*.cache
+*.pdb
+*.dbmdl
+*.jfm
+*.ldf
+*.mdf
+
+# Publish outputs
+publish/
+
+# Rider/JetBrains IDE specific
+.idea/
+*.sln.iml
