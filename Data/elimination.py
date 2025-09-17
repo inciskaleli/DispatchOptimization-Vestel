@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 # -------------------- CONFIG (paths kod içinde) --------------------
-INPUT_DATALOADER  = Path("./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-14_03_2025.json")
+INPUT_DATALOADER  = Path("./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-10_03_2025.json")
 OUTPUT_DATALOADER = INPUT_DATALOADER.with_name(INPUT_DATALOADER.stem + "_pruned.json")
 # ------------------------------------------------------------------
 

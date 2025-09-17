@@ -21,12 +21,22 @@ from typing import Any, Dict, List, Tuple, Optional
 import pandas as pd
 from openpyxl.styles import Font
 import math
+from typing import Optional
+ 
 
 sayi = 14
-# -------- CONFIG --------
-INPUT_RESULT_JSON  = f"./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/result-{sayi}_03_2025.json"
-INPUT_DATALOADER   = f"./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/dataloader-{sayi}_03_2025.json"
-OUTPUT_XLSX        = f"./scenarios/capacity_weight=1/technician_capacity_100-driving_speed_dynamic/result-{sayi}_03_2025.xlsx"
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--input_result", required=True, help="Path to result JSON")
+parser.add_argument("--input_dataloader", required=True, help="Path to dataloader JSON")
+parser.add_argument("--output_xlsx", required=False, help="Path to output XLSX (optional)")
+args = parser.parse_args()
+
+INPUT_RESULT_JSON = args.input_result
+INPUT_DATALOADER  = args.input_dataloader
+OUTPUT_XLSX       = args.output_xlsx or Path(INPUT_RESULT_JSON).with_suffix(".xlsx")
+
 SLOT_CAPACITY_MIN  = 120  # 2 hours per slot
 # ------------------------
 
@@ -66,7 +76,7 @@ def slot_bounds_for_date(d: datetime) -> list[tuple[datetime, datetime, str]]:
     return out
 
 
-def label_for_window(start_iso: str, end_iso: str) -> str | None:
+def label_for_window(start_iso: str, end_iso: str) -> Optional[str]:
     """Return slot label if the arrival window exactly matches a standard slot."""
     try:
         s = parse_iso_z(start_iso)
@@ -258,7 +268,7 @@ def flatten_suggestions(sugg: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
 
 
 # --------- Tech load by slot (counts & minutes) ----------
-def _slot_label_for_hour(h: int) -> str | None:
+def _slot_label_for_hour(h: int) -> Optional[str]:
     for label, start_h, end_h in SLOT_DEFS:
         if start_h <= h < end_h:
             return label
@@ -378,7 +388,7 @@ def build_appt_eligibility_by_slot(appts: List[dict],
     rows = []
     # precompute appointment durations & arrival labels
     appt_duration: Dict[str, int] = {}
-    appt_arrival_label: Dict[str, str | None] = {}
+    appt_arrival_label: Dict[str, Optional[str]] = {}
     appt_date_key: Dict[str, str] = {}
 
     for ap in appts:
@@ -707,8 +717,20 @@ def main():
         # NEW: total distance per technician
         tech_total_distance_df.to_excel(writer, index=False, sheet_name="Tech_Total_Distance")
 
+        # --- NEW: Objective sheet ---
+        objective = result_obj.get("objective", {})
+        # --- NEW: Objective sheet ---
+        objective = result_obj.get("objective", {})
+        if objective:
+            obj_items = [{"Metric": k, "Value": v} for k, v in objective.items()]
+            obj_df = pd.DataFrame(obj_items)
+            obj_df.to_excel(writer, index=False, sheet_name="Objective", header=False, startrow=0, startcol=0)
+
+            obj_df.to_excel(writer, index=False, sheet_name="Objective")
+
     print(f"✅ Wrote Excel with all sheets to: {OUTPUT_XLSX}")
 
 
 if __name__ == "__main__":
     main()
+

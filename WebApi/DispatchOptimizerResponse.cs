@@ -36,8 +36,21 @@ public interface DispatchOptimizerResponse
         [property: JsonPropertyName("technicians")]
         List<ResponseTechnician> Technicians,
         [property: JsonPropertyName("suggestions")]
-        ResponseSuggestion Suggestions
+        ResponseSuggestion Suggestions,
+        [property: JsonPropertyName("objective")]
+        ResponseObjective Objective
     );
+
+    public record ResponseObjective(
+        [property: JsonPropertyName("objective_value")] double ObjectiveValue,
+        [property: JsonPropertyName("total_profit")] double TotalProfit,
+        [property: JsonPropertyName("total_weighted_start_time")] double TotalWeightedStartTime,
+        [property: JsonPropertyName("unserved_task_cost")] double UnservedTaskCost,
+        [property: JsonPropertyName("unserved_bu_cost")] double UnservedBUCost,
+        [property: JsonPropertyName("equityKPI_workload_deviation")] double EquityKPI_WorkloadDeviation,
+        [property: JsonPropertyName("equityKPI_num_of_techs_with_min_workload")] double EquityKPI_NumOfTechsWithMinWorkload
+    );
+
 
     public record ResponseStaffNonAvailability(
         [property: JsonPropertyName("technician_id")]

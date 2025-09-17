@@ -1,5 +1,6 @@
 using Algorithm;
 using Microsoft.AspNetCore.Mvc;
+using static Algorithm.Params;
 
 namespace WebApi.Controllers;
 
@@ -110,6 +111,22 @@ public class DispatchOptimizerController : ControllerBase
         }
 
         var suggestions = new DispatchOptimizerResponse.ResponseSuggestion(overtime, bufferSlots);
-        return new DispatchOptimizerResponse.Response(assignments, staffNonAvailabilities, staffSummary, suggestions);
+        var response = new DispatchOptimizerResponse.Response(
+            assignments,
+            staffNonAvailabilities,
+            staffSummary,
+            suggestions,
+            new DispatchOptimizerResponse.ResponseObjective(
+                finalSolution.ObjectiveValue,
+                finalSolution.TotalProfit,
+                finalSolution.TotalWeightedStartTime,
+                finalSolution.UnservedTaskCost,
+                finalSolution.UnservedBUCost,
+                finalSolution.EquityKPI_WorkloadDeviation,
+                finalSolution.EquityKPI_NumOfTechsWithMinWorkload
+            )
+        );
+
+        return response;
     }
 }
