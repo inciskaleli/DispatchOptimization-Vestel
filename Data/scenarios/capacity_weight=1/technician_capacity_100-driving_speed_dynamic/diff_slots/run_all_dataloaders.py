@@ -3,8 +3,9 @@ import subprocess
 from pathlib import Path
 
 # -------- CONFIG --------
+#window_variants-{day}
 day = 13
-DATA_DIR = Path(rf".\scenarios\capacity_weight=1\technician_capacity_100-driving_speed_dynamic\diff_slots\window_variants-{day}")
+DATA_DIR = Path(rf".\scenarios\capacity_weight=1\technician_capacity_100-driving_speed_dynamic\diff_slots\mevcut_durum")
 # ------------------------
 
 # klasördeki tüm dataloader jsonlarını al

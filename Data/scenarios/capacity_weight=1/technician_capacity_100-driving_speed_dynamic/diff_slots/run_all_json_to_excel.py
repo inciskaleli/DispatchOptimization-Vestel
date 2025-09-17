@@ -9,7 +9,7 @@ import subprocess
 
 # ---------------- CONFIG ----------------
 JSON_TO_EXCEL_SCRIPT = Path(r"json_to_excel.py")
-INPUT_JSON_DIR = Path(r".\scenarios\capacity_weight=1\technician_capacity_100-driving_speed_dynamic\diff_slots\window_variants-13")
+INPUT_JSON_DIR = Path(r".\scenarios\capacity_weight=1\technician_capacity_100-driving_speed_dynamic\diff_slots\mevcut_durum")
 RESULT_JSON_PATTERN = "result-*_pruned_*.json"
 DATALOADER_JSON_PATTERN = "dataloader-*_pruned_*.json"
 # ----------------------------------------

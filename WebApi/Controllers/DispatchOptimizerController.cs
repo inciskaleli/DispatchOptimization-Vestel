@@ -123,7 +123,8 @@ public class DispatchOptimizerController : ControllerBase
                 finalSolution.UnservedTaskCost,
                 finalSolution.UnservedBUCost,
                 finalSolution.EquityKPI_WorkloadDeviation,
-                finalSolution.EquityKPI_NumOfTechsWithMinWorkload
+                finalSolution.EquityKPI_NumOfTechsWithMinWorkload,
+                finalSolution.TotalCost
             )
         );
 

@@ -48,7 +48,8 @@ public interface DispatchOptimizerResponse
         [property: JsonPropertyName("unserved_task_cost")] double UnservedTaskCost,
         [property: JsonPropertyName("unserved_bu_cost")] double UnservedBUCost,
         [property: JsonPropertyName("equityKPI_workload_deviation")] double EquityKPI_WorkloadDeviation,
-        [property: JsonPropertyName("equityKPI_num_of_techs_with_min_workload")] double EquityKPI_NumOfTechsWithMinWorkload
+        [property: JsonPropertyName("equityKPI_num_of_techs_with_min_workload")] double EquityKPI_NumOfTechsWithMinWorkload,
+        [property: JsonPropertyName("distance_cost")] double cost
     );
 
 
